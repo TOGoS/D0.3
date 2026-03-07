@@ -1,8 +1,8 @@
 # D0.3
 
-Yet another implementation of [Dungeon](http://www.nuke24.net/dlog/Dungeon.html).
+Yet another browser/JavaScript implementation of [Dungeon](http://www.nuke24.net/dlog/Dungeon.html).
 
-Work in progress.
+Work in progress as of 2026-03-07.
 
 ## Implementation Philosophy
 
