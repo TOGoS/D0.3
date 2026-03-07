@@ -51,7 +51,7 @@
 	 * @typedef RoomLink
 	 * @property {Vec3D} outPosition
 	 * @property {Direction} outDirection
-	 * @property {RoomID} destRoomId
+	 * @property {RoomID} targetRoomId
 	 * @property {Vec3D} inPosition
 	 * @property {Direction} inDirection
 	 * 
@@ -65,9 +65,11 @@
 	 * @property {void} [orientation]
 	 * @property {Thing} thing
 	 * 
+	 * @typedef {string} RoomThingKey
+	 * 
 	 * @typedef Room
 	 * @property {AABB3D} bounds
-	 * @property {RoomThing[]} contents
+	 * @property {{[k:RoomThingKey]: RoomThing}} contents
 	 * @property {RoomLink[]} links
 	 * 
 	 * @typedef Dungeon
@@ -80,6 +82,15 @@
 	 * @property {YardsPerPixel} scale
 	 * // Possibly add orientation later
 	 */
+	
+	/**
+	 * @param {Vec3D} a
+	 * @param {Vec3D} b
+	 * @return {boolean}
+	 */
+	function vec3dEquals(a, b) {
+		return a.x == b.x && a.y == b.y && a.z == b.z;
+	}
 	
 	/**
 	 * @type IconRenderer
@@ -96,12 +107,11 @@
 	};
 	
 	/**
-	 * 
-	 * @param {Dungeon} dungeon 
+	 * @param {Dungeon} dungeon
 	 * @param {(thing:Thing)=>boolean} filter
 	 * @return {{roomId:RoomID, roomThingKey:string, roomThing:RoomThing}[]}
 	 */
-	function findThing(dungeon, filter) {
+	function findThings(dungeon, filter) {
 		/** @type {{roomId:RoomID, roomThingKey:string, roomThing:RoomThing}[]} */
 		const rez = [];
 		for( const roomId in dungeon.rooms ) {
@@ -123,6 +133,7 @@
 	 */
 	function drawRoom(ctx, room) {
 		ctx.fillStyle = 'black';
+				
 		ctx.fillRect(
 			room.bounds.minX, room.bounds.minY,
 			room.bounds.maxX - room.bounds.minX,
@@ -140,13 +151,28 @@
 		);
 		
 		// draw 1-yard "hole" at each link's outPosition (cover the wall with room background)
+		// This is a hack.
+		// Replace with more robust room drawing allowing for layering later.
 		ctx.fillStyle = 'black';
 		for (const link of room.links) {
 			const p = link.outPosition;
-			ctx.fillRect(p.x - 0.5, p.y - 0.5, 1, 1);
+			
+			const blobBounds = {
+				minX: Math.max(room.bounds.minX, p.x-0.5) - 0.1,
+				minY: Math.max(room.bounds.minY, p.y-0.5) - 0.1,
+				maxX: Math.min(room.bounds.maxX, p.x+0.5) + 0.1,
+				maxY: Math.min(room.bounds.maxY, p.y+0.5) + 0.1,
+			}
+			
+			ctx.fillRect(
+				blobBounds.minX, blobBounds.minY,
+				blobBounds.maxX - blobBounds.minX,
+				blobBounds.maxY - blobBounds.minY,
+			);
 		}
 		
-		for( const roomThing of room.contents ) {
+		for( const k in room.contents ) {
+			const roomThing = room.contents[k];
 			ctx.save();
 			ctx.translate(roomThing.position.x, roomThing.position.y);
 			roomThing.thing.icon.render.call(roomThing.thing.icon, ctx);
@@ -155,23 +181,39 @@
 	}
 	
 	/**
+	 * Generate a uniqe thing key for the given room.
+	 * If the indicated base key is not already used, it will be returned.
+	 * 
+	 * @param {Room} room
+	 * @param {RoomThingKey} [baseKey]
+	 */
+	function generateThingKey(room, baseKey) {
+		if( baseKey != undefined && !room.contents[baseKey] ) return baseKey;
+		
+		if( baseKey == undefined ) baseKey = "thing";
+		
+		let i = 1;
+		while( room.contents[baseKey+"_"+i] ) i++;
+		return baseKey+"_"+i;
+	}
+	
+	/**
 	 * @param {CanvasRenderingContext2D} ctx
 	 * @param {Dungeon} dungeon
 	 * @param {DungeonPerspective} perspective
 	 */
 	function drawDungeon(ctx, dungeon, perspective) {
-		
 		const room = dungeon.rooms[perspective.roomId];
 		
 		ctx.save();
 		
 		ctx.translate(ctx.canvas.width/2, ctx.canvas.height/2);
-		ctx.scale(perspective.scale, perspective.scale);
+		ctx.scale(perspective.scale, -perspective.scale);
 		
 		drawRoom(ctx, room);
-
+		
 		for( const link of room.links ) {
-			const destRoom = dungeon.rooms[link.destRoomId];
+			const destRoom = dungeon.rooms[link.targetRoomId];
 			ctx.save();	
 			ctx.translate(link.outPosition.x - link.inPosition.x, link.outPosition.y - link.inPosition.y);
 			drawRoom(ctx, destRoom);
@@ -186,8 +228,8 @@
 		rooms: {
 			"room000": {
 				bounds: STD_ROOM_BOUNDS,
-				contents: [
-					{
+				contents: {
+					"harold": {
 						position: {x:0, y:0, z:0},
 						thing: {
 							id: "harold",
@@ -197,12 +239,12 @@
 							}
 						}
 					}
-				],
+				},
 				links: [
 					{
 						outPosition: {x:1.5, y:0,z:0},
 						outDirection: "east",
-						destRoomId: "room001",
+						targetRoomId: "room001",
 						inPosition: {x:-1.5, y:0,z:0},
 						inDirection: "west",
 					}
@@ -210,12 +252,19 @@
 			},
 			"room001": {
 				bounds: STD_ROOM_BOUNDS,
-				contents: [],
+				contents: {},
 				links: [
+					{
+						outPosition: {x:-1.5, y:0,z:0},
+						outDirection: "west",
+						targetRoomId: "room000",
+						inPosition: {x:1.5, y:0,z:0},
+						inDirection: "east",
+					},
 					{
 						outPosition: {x:0, y:-1.5, z:0},
 						outDirection: "south",
-						destRoomId: "room000",
+						targetRoomId: "room000",
 						inPosition: {x:0, y:1.5, z:0},
 						inDirection: "north",
 					}
@@ -223,41 +272,202 @@
 			},
 		}
 	};
-
-	function render() {
-		/** @type HTMLCanvasElement */
-		const theView = cast(x => x instanceof HTMLCanvasElement, document.getElementById('the-view'));
+	
+	/**
+	 * @typedef MoveCommand
+	 * @property {"move"} type
+	 * @property {Direction} direction
+	 * 
+	 * @typedef {MoveCommand} Command
+	 * 
+	 */
+	
+	class DungeonUI {
+		/** @type {undefined|Dungeon} */
+		#dungeon;
+		/** @type {undefined|ThingID} */
+		#characterId;
+		/** @type {HTMLCanvasElement} */
+		#canvas;
+		/**
+		 * @param {HTMLCanvasElement} canvas
+		 */
+		constructor(canvas) {
+			this.#canvas = canvas;
+		}
 		
-		theView.width = theView.clientWidth;
-		theView.height = theView.clientHeight;
+		#renderRequested = false;
 		
-		const ctx = cast(ctx => ctx instanceof CanvasRenderingContext2D, theView.getContext('2d'));
+		render() {
+			this.#renderRequested = false;
+			
+			this.#canvas.width = this.#canvas.clientWidth;
+			this.#canvas.height = this.#canvas.clientHeight;
 		
-		const haroldSR = findThing(theDungeon, (thing) => thing.id == "harold");	
-		/** @type {DungeonPerspective|undefined} */
-		const perspective = haroldSR.reduce(
-			(acc, entry) => acc || {
-				dungeon: theDungeon,
-				roomId: entry.roomId,
-				thingId: entry.roomThing.thing.id,
-				position: entry.roomThing.position,
-				scale: 24
-			},
-			/** @type {DungeonPerspective|undefined} */ (undefined)
-		);
+			const ctx = cast(ctx => ctx instanceof CanvasRenderingContext2D, this.#canvas.getContext('2d'));
+			
+			const characterSearchResult = this.#dungeon == undefined || this.#characterId == undefined ? [] :
+				findThings(this.#dungeon, (thing) => thing.id == this.#characterId);
+			/** @type {DungeonPerspective|undefined} */
+			const perspective = characterSearchResult.reduce(
+				(acc, entry) => acc || {
+					dungeon: this.#dungeon,
+					roomId: entry.roomId,
+					thingId: entry.roomThing.thing.id,
+					position: entry.roomThing.position,
+					scale: 24
+				},
+				/** @type {DungeonPerspective|undefined} */ (undefined)
+			);
+			
+			if( this.#dungeon && perspective ) drawDungeon(ctx, this.#dungeon, perspective);
+			
+			ctx.fillStyle = 'white';
+			ctx.font = "12px monospace";
+			ctx.fillText(`Position: ${perspective ? `${JSON.stringify(perspective.roomId)}, ${JSON.stringify(perspective.position)}` : 'Not found'}`, 10, ctx.canvas.height - 20);
+		}
 		
-		if( perspective ) drawDungeon(ctx, theDungeon, perspective);
+		#requestRender() {
+			if( this.#renderRequested ) return;
+			window.requestAnimationFrame(this.render.bind(this));
+			this.#renderRequested = true;
+		}
+		#dungeonUpdated() {
+			this.#requestRender();
+		}
 		
-		ctx.fillStyle = 'white';
-		ctx.font = "12px monospace";
-		ctx.fillText(`Position: ${perspective ? `${JSON.stringify(perspective.roomId)}, ${JSON.stringify(perspective.position)}` : 'Not found'}`, 10, ctx.canvas.height - 20);
-	};
-
-	function requestRender() {
-		window.requestAnimationFrame(render);
+		/**
+		 * @param {KeyboardEvent} event
+		 * @return {Command[]}
+		*/
+		#decodeKeyEvent(event) {
+			/** @type {Command[]} */
+			const commands = [];
+			switch(event.key) {
+				case "w": commands.push({type: "move", direction: "north"}); break;
+				case "a": commands.push({type: "move", direction: "west"}); break;
+				case "s": commands.push({type: "move", direction: "south"}); break;
+				case "d": commands.push({type: "move", direction: "east"}); break;
+				case "q": commands.push({type: "move", direction: "up"}); break;
+				case "e": commands.push({type: "move", direction: "down"}); break;
+			}
+			return commands;
+		}
+		
+		#findCharacter() {
+			return this.#dungeon == undefined || this.#characterId == undefined ? [] :
+				findThings(this.#dungeon, (thing) => thing.id == this.#characterId);
+		}
+		
+		/**
+		 * @param {RoomID} fromRoomId
+		 * @param {RoomThingKey} fromThingKey
+		 * @param {RoomID} toRoomId
+		 * @param {Vec3D} toPosition
+		 * 
+		 * @return {boolean} true if the thing was moved
+		 * 
+		 * Hmm, maybe this should be a more generic 'replace room thing' function
+		 */
+		#moveRoomThing(fromRoomId, fromThingKey, toRoomId, toPosition) {
+			if( !this.#dungeon ) throw new Error("No dungeon loaded");
+			const room = this.#dungeon.rooms[fromRoomId];
+			if( !room ) throw new Error(`No such room: ${fromRoomId}`);
+			const roomThing = room.contents[fromThingKey];
+			if( !roomThing ) throw new Error(`No such thing in room ${fromRoomId} at index ${fromThingKey}`);			
+			
+			if( fromRoomId == toRoomId && vec3dEquals(roomThing.position, toPosition) ) return false; // No move needed
+			
+			const toRoom = this.#dungeon.rooms[toRoomId];
+			if( !toRoom ) throw new Error(`No such room: ${toRoomId}`);
+			
+			delete room.contents[fromThingKey];
+			const toThingKey = generateThingKey(toRoom, fromThingKey);
+			toRoom.contents[toThingKey] = {
+				position: toPosition,
+				thing: roomThing.thing
+			};
+			
+			this.#dungeonUpdated();
+			
+			return true;
+		}
+		
+		/**
+		 * @param {ThingID} characterId
+		 * @param {Direction} direction
+		 */
+		#attemptMoveCharacter(characterId, direction) {
+			if( !this.#dungeon ) return;
+			const characters = this.#findCharacter();
+			for( const character of characters ) {
+				const room = this.#dungeon.rooms[character.roomId];
+				if( !room ) throw new Error(`findThings returned entry with invalid room: ${character.roomId}`);
+				const link = room.links.find(link => link.outDirection == direction);
+				if( !link ) continue; // No exit in that direction, try next character match
+				
+				// TODO: Allow positioning within room
+				return this.#moveRoomThing(character.roomId, character.roomThingKey, link.targetRoomId, {x:0,y:0,z:0});
+			}
+		}
+		
+		/**
+		 * @param {Command} command
+		 */
+		#doCommand(command) {
+			switch(command.type) {
+				case "move": {
+					if( !this.#characterId ) return;
+					console.log(`Moving ${command.direction}`);
+					this.#attemptMoveCharacter(this.#characterId, command.direction);
+				}
+			}
+		}
+		
+		/** @param {KeyboardEvent} event */
+		#handleKeyDown(event) {
+			console.log("Key down:", event.key);
+			const commands = this.#decodeKeyEvent(event);
+			for( const command of commands ) this.#doCommand(command);
+		}
+		
+		/**
+		 * @param {HTMLCanvasElement} canvas
+		 * @returns {DungeonUI}
+		 */
+		static init(canvas) {
+			const ui = new DungeonUI(cast(el => el instanceof HTMLCanvasElement, canvas));
+			
+			window.addEventListener('resize', () => ui.#requestRender());
+			window.addEventListener('keydown', ui.#handleKeyDown.bind(ui));
+			
+			ui.#requestRender();
+			
+			return ui;
+		}
+		
+		/** @type {ThingID|undefined} */
+		get characterId() {
+			return this.#characterId;
+		}
+		/** @param {ThingID|undefined} characterId */
+		set characterId(characterId) {
+			this.#characterId = characterId;
+			this.#requestRender();
+		}
+		
+		/** @type {undefined|Dungeon} */
+		get dungeon() {
+			return this.#dungeon;
+		}
+		/** @param {Dungeon} dungeon */
+		set dungeon(dungeon) {
+			this.#dungeon = dungeon;
+			this.#requestRender();
+		}
 	}
-
-	window.addEventListener('resize', requestRender);
-
-	requestRender();
+	
+	const dungeonUi = DungeonUI.init(cast(el => el instanceof HTMLCanvasElement, document.getElementById('the-view')));
+	dungeonUi.dungeon = theDungeon;
+	dungeonUi.characterId = "harold";
 })();
