@@ -27,6 +27,7 @@
 	 * @typedef {string} RoomID
 	 * @typedef {string} ThingID
 	 * @typedef {number&{unit?:"YardsPerPixel"}} YardsPerPixel
+	 * @typedef {string} ColorString
 	 * 
 	 * @typedef {(this:Icon, ctx:CanvasRenderingContext2D)=>void} IconRenderer
 	 * 
@@ -68,6 +69,7 @@
 	 * @typedef {string} RoomThingKey
 	 * 
 	 * @typedef Room
+	 * @property {ColorString} [wallColor]
 	 * @property {AABB3D} bounds
 	 * @property {{[k:RoomThingKey]: RoomThing}} contents
 	 * @property {RoomLink[]} links
@@ -84,6 +86,38 @@
 	 */
 	
 	/**
+	 * @param {Direction} d
+	 * @return {Direction}
+	*/
+	function oppositeDirection(d) {
+		switch(d) {
+		case "down" : return "up";
+		case "east" : return "west";
+		case "north": return "south";
+		case "south": return "north";
+		case "up"   : return "down";
+		case "west" : return "east";
+		}
+	}
+	
+	/**
+	 * @param {Room} room
+	 * @param {Direction} direction
+	 * @return {Vec3D}
+	 */
+	function roomWallCenterPosition(room, direction) {
+		const bounds = room.bounds;
+		switch(direction) {
+		case "down" : return {x: (bounds.minX+bounds.maxX)/2, y: (bounds.minY+bounds.maxY)/2, z: bounds.minZ};
+		case "east" : return {x: bounds.maxX, y: (bounds.minY+bounds.maxY)/2, z: (bounds.minZ+bounds.maxZ)/2};
+		case "north": return {x: (bounds.minX+bounds.maxX)/2, y: bounds.maxY, z: (bounds.minZ+bounds.maxZ)/2};
+		case "south": return {x: (bounds.minX+bounds.maxX)/2, y: bounds.minY, z: (bounds.minZ+bounds.maxZ)/2};
+		case "up"   : return {x: (bounds.minX+bounds.maxX)/2, y: (bounds.minY+bounds.maxY)/2, z: bounds.maxZ};
+		case "west" : return {x: bounds.minX, y: (bounds.minY+bounds.maxY)/2, z: (bounds.minZ+bounds.maxZ)/2};
+		}
+	}
+	
+	/**
 	 * @param {Vec3D} a
 	 * @param {Vec3D} b
 	 * @return {boolean}
@@ -97,7 +131,7 @@
 	 */
 	function renderHarold(ctx) {
 		ctx.fillStyle = "orange";
-		ctx.fillRect(-0.5, -0.5, 1, 1);
+		ctx.fillRect(-0.3, -0.3, 0.6, 0.6);
 	}
 	
 	/** @type {AABB3D} */
@@ -142,7 +176,7 @@
 		
 		const wallThickness = 1/8; // 4.5 inches
 		 
-		ctx.strokeStyle = 'white';
+		ctx.strokeStyle = room.wallColor ?? 'white';
 		ctx.lineWidth = wallThickness;
 		ctx.strokeRect(
 			room.bounds.minX + wallThickness/2, room.bounds.minY + wallThickness/2,
@@ -210,8 +244,6 @@
 		ctx.translate(ctx.canvas.width/2, ctx.canvas.height/2);
 		ctx.scale(perspective.scale, -perspective.scale);
 		
-		drawRoom(ctx, room);
-		
 		for( const link of room.links ) {
 			const destRoom = dungeon.rooms[link.targetRoomId];
 			ctx.save();	
@@ -220,6 +252,8 @@
 			ctx.restore();
 		}
 		
+		drawRoom(ctx, room);
+
 		ctx.restore();
 	}
 	
@@ -240,38 +274,54 @@
 						}
 					}
 				},
-				links: [
-					{
-						outPosition: {x:1.5, y:0,z:0},
-						outDirection: "east",
-						targetRoomId: "room001",
-						inPosition: {x:-1.5, y:0,z:0},
-						inDirection: "west",
-					}
-				]
+				links: []
 			},
 			"room001": {
 				bounds: STD_ROOM_BOUNDS,
 				contents: {},
-				links: [
-					{
-						outPosition: {x:-1.5, y:0,z:0},
-						outDirection: "west",
-						targetRoomId: "room000",
-						inPosition: {x:1.5, y:0,z:0},
-						inDirection: "east",
-					},
-					{
-						outPosition: {x:0, y:-1.5, z:0},
-						outDirection: "south",
-						targetRoomId: "room000",
-						inPosition: {x:0, y:1.5, z:0},
-						inDirection: "north",
-					}
-				]
+				links: []
 			},
+			"room002": {
+				wallColor: "green",
+				bounds: STD_ROOM_BOUNDS,
+				contents: {},
+				links: []
+			}
 		}
 	};
+	
+	addBidirectionalLink(theDungeon, "room000", "west", "room001", "east");
+	addBidirectionalLink(theDungeon, "room001", "south", "room002", "north");
+	addBidirectionalLink(theDungeon, "room002", "south", "room000", "north");
+	
+	/**
+	 * @param {Dungeon} dungeon
+	 * @param {RoomID} roomAId
+	 * @param {Direction} directionA
+	 * @param {RoomID} roomBId
+	 * @param {Direction} directionB
+	 */
+	function addBidirectionalLink(dungeon, roomAId, directionA, roomBId, directionB) {
+		const roomA = dungeon.rooms[roomAId];
+		const roomB = dungeon.rooms[roomBId];
+		const roomALinkPosition = roomWallCenterPosition(roomA, directionA);
+		const roomBLinkPosition = roomWallCenterPosition(roomB, directionB);
+		
+		roomA.links.push({
+			outPosition: roomALinkPosition,
+			outDirection: directionA,
+			targetRoomId: roomBId,
+			inPosition: roomBLinkPosition,
+			inDirection: directionB,
+		});
+		roomB.links.push({
+			outPosition: roomBLinkPosition,
+			outDirection: directionB,
+			targetRoomId: roomAId,
+			inPosition: roomALinkPosition,
+			inDirection: directionA,
+		});
+	}
 	
 	/**
 	 * @typedef MoveCommand
@@ -315,7 +365,7 @@
 					roomId: entry.roomId,
 					thingId: entry.roomThing.thing.id,
 					position: entry.roomThing.position,
-					scale: 24
+					scale: 36
 				},
 				/** @type {DungeonPerspective|undefined} */ (undefined)
 			);
