@@ -52,6 +52,7 @@
 	 * @typedef RoomLink
 	 * @property {Vec3D} outPosition
 	 * @property {Direction} outDirection
+	 * @property {number} width
 	 * @property {RoomID} targetRoomId
 	 * @property {Vec3D} inPosition
 	 * @property {Direction} inDirection
@@ -175,33 +176,63 @@
 	}
 	
 	/**
-	 * @param {RoomLink} link 
-	 * @param {Vec3D} fromPosition 
-	 * @param {Vec3D} toPosition 
+	 * @param {RoomLink} link
+	 * @param {Vec3D} fromPosition
+	 * @param {Vec3D} toPosition
+	 * @return {Vec3D|null} - position within destination room corresponding to toPosition, or null if the movement doesn't cross the portal
 	 */
 	function crossesPortal(link, fromPosition, toPosition) {
-		// Check if the line from fromPosition to toPosition crosses the plane of the portal
-		// and if the crossing point is within the portal bounds.
+		// This is mostly CoPilot-generated.
+		// Revisit later if it's overcomplicated.
+		
 		const portalNormal = directionVector(link.outDirection);
 		const portalPoint = link.outPosition;
+		const halfWidth = link.width / 2;
 		
-		const fromToPortal = {
-			x: portalPoint.x - fromPosition.x,
-			y: portalPoint.y - fromPosition.y,
-			z: portalPoint.z - fromPosition.z,
+		// Offsets from portal of the start and end points of the movement
+		const fromOffset = {
+			x: fromPosition.x - portalPoint.x,
+			y: fromPosition.y - portalPoint.y,
+			z: fromPosition.z - portalPoint.z,
+		};
+		const toOffset = {
+			x: toPosition.x - portalPoint.x,
+			y: toPosition.y - portalPoint.y,
+			z: toPosition.z - portalPoint.z,
 		};
 		
-		const toToPortal = {
-			x: portalPoint.x - toPosition.x,
-			y: portalPoint.y - toPosition.y,
-			z: portalPoint.z - toPosition.z,
+		const fromDot = fromOffset.x * portalNormal.x + fromOffset.y * portalNormal.y + fromOffset.z * portalNormal.z;
+		const toDot   =   toOffset.x * portalNormal.x +   toOffset.y * portalNormal.y +   toOffset.z * portalNormal.z;
+		
+		if( fromDot == 0 || toDot == 0 || fromDot * toDot > 0 ) return null;
+		
+		const t = fromDot / (fromDot - toDot);
+		const crossingPoint = {
+			x: fromPosition.x + (toPosition.x - fromPosition.x) * t,
+			y: fromPosition.y + (toPosition.y - fromPosition.y) * t,
+			z: fromPosition.z + (toPosition.z - fromPosition.z) * t,
 		};
 		
-		// CoPilot-generated math, we'll seee if it works, lmao.
-		const fromDot = fromToPortal.x * portalNormal.x + fromToPortal.y * portalNormal.y + fromToPortal.z * portalNormal.z;
-		const toDot = toToPortal.x * portalNormal.x + toToPortal.y * portalNormal.y + toToPortal.z * portalNormal.z;
+		const destPosition = addVec3d(crossingPoint, {
+			x: link.inPosition.x - link.outPosition.x,
+			y: link.inPosition.y - link.outPosition.y,
+			z: link.inPosition.z - link.outPosition.z,
+		});
 		
-		return (fromDot > 0 && toDot < 0) || (fromDot < 0 && toDot > 0);
+		switch(link.outDirection) {
+		case "east":
+		case "west":
+			return Math.abs(crossingPoint.y - portalPoint.y) <= halfWidth &&
+				Math.abs(crossingPoint.z - portalPoint.z) <= halfWidth ? destPosition : null;
+		case "north":
+		case "south":
+			return Math.abs(crossingPoint.x - portalPoint.x) <= halfWidth &&
+				Math.abs(crossingPoint.z - portalPoint.z) <= halfWidth ? destPosition : null;
+		case "up":
+		case "down":
+			return Math.abs(crossingPoint.x - portalPoint.x) <= halfWidth &&
+				Math.abs(crossingPoint.y - portalPoint.y) <= halfWidth ? destPosition : null;
+		}
 	}
 	
 	//// Rendering
@@ -228,19 +259,20 @@
 			(room.bounds.maxX - room.bounds.minX) - wallThickness,
 			(room.bounds.maxY - room.bounds.minY) - wallThickness
 		);
-		
+				
 		// draw 1-yard "hole" at each link's outPosition (cover the wall with room background)
 		// This is a hack.
 		// Replace with more robust room drawing allowing for layering later.
-		ctx.fillStyle = 'black';
+		ctx.fillStyle = 'rgb(10,10,10)'; // A slightly different color to help identify the holes while testing
 		for (const link of room.links) {
 			const p = link.outPosition;
+			const hw = link.width / 2;
 			
 			const blobBounds = {
-				minX: Math.max(room.bounds.minX, p.x-0.5) - 0.1,
-				minY: Math.max(room.bounds.minY, p.y-0.5) - 0.1,
-				maxX: Math.min(room.bounds.maxX, p.x+0.5) + 0.1,
-				maxY: Math.min(room.bounds.maxY, p.y+0.5) + 0.1,
+				minX: Math.max(room.bounds.minX, p.x-hw) - 0.1,
+				minY: Math.max(room.bounds.minY, p.y-hw) - 0.1,
+				maxX: Math.min(room.bounds.maxX, p.x+hw) + 0.1,
+				maxY: Math.min(room.bounds.maxY, p.y+hw) + 0.1,
 			}
 			
 			ctx.fillRect(
@@ -393,6 +425,7 @@
 		roomA.links.push({
 			outPosition: roomALinkPosition,
 			outDirection: directionA,
+			width: 1,
 			targetRoomId: roomBId,
 			inPosition: roomBLinkPosition,
 			inDirection: directionB,
@@ -400,6 +433,7 @@
 		roomB.links.push({
 			outPosition: roomBLinkPosition,
 			outDirection: directionB,
+			width: 1,
 			targetRoomId: roomAId,
 			inPosition: roomALinkPosition,
 			inDirection: directionA,
