@@ -533,6 +533,7 @@
 		#attemptMoveCharacter(characterId, direction) {
 			if( !this.#dungeon ) return;
 			const characters = this.#findCharacter();
+			let allMoved = true;
 			for( const character of characters ) {
 				const room = this.#dungeon.rooms[character.roomId];
 				if( !room ) throw new Error(`findThings returned entry with invalid room: ${character.roomId}`);
@@ -561,8 +562,9 @@
 					return this.#moveRoomThing(character.roomId, character.roomThingKey, character.roomId, destLocalPosition);
 				}
 				
-				// TODO: Play a bonk sound or something if the move is invalid?
+				allMoved = false;
 			}
+			return allMoved;
 		}
 		
 		/**
@@ -572,17 +574,21 @@
 			switch(command.type) {
 				case "move": {
 					if( !this.#characterId ) return;
-					console.log(`Moving ${command.direction}`);
-					this.#attemptMoveCharacter(this.#characterId, command.direction);
+					// console.log(`Moving ${command.direction}`);
+					if( !this.#attemptMoveCharacter(this.#characterId, command.direction) ) {
+						console.log("Bonk!");
+					}
 				}
 			}
 		}
 		
 		/** @param {KeyboardEvent} event */
 		#handleKeyDown(event) {
-			console.log("Key down:", event.key);
 			const commands = this.#decodeKeyEvent(event);
 			for( const command of commands ) this.#doCommand(command);
+			if( commands.length == 0 ) {
+				console.log(`Unrecognized key: ${event.key}`);
+			}
 		}
 		
 		/**
