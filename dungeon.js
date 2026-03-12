@@ -323,6 +323,7 @@
 		
 		ctx.translate(ctx.canvas.width/2, ctx.canvas.height/2);
 		ctx.scale(perspective.scale, -perspective.scale);
+		ctx.translate(-perspective.position.x, -perspective.position.y);
 		
 		for( const link of room.links ) {
 			const destRoom = dungeon.rooms[link.targetRoomId];
