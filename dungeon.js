@@ -476,7 +476,10 @@
 	 * @typedef PickUpCommand
 	 * @property {"pickup"} type
 	 * 
-	 * @typedef {MoveCommand|PickUpCommand} Command
+	 * @typedef ToggleHelpCommand
+	 * @property {"togglehelp"} type
+	 * 
+	 * @typedef {MoveCommand|PickUpCommand|ToggleHelpCommand} Command
 	 * 
 	 */
 	
@@ -487,6 +490,7 @@
 	 */
 	
 	class DungeonUI {
+		#showHelp = false;
 		#hasFocus = false;
 		/** @type {undefined|Dungeon} */
 		#dungeon;
@@ -538,6 +542,24 @@
 			ctx.fillText(`Position: ${perspective ? `${JSON.stringify(perspective.roomId)}, ${JSON.stringify(perspective.position)}` : 'Not found'}`, 10, canvHeight - 20);
 			ctx.fillStyle = ctx.strokeStyle;
 			ctx.fillText(`Hasfocus: ${this.#hasFocus}`, 10, canvHeight - 35);
+			
+			if( this.#showHelp ) {
+				ctx.fillStyle = 'white';
+				let y = 15;
+				for( const line of [
+					"Commands:",
+					"WASD to move north/west/south/east",
+					"Q/E to move up/down",
+					"G to pick up items",
+					"F1 to toggle this help"
+				] ) {
+					ctx.fillText(line, 10, y);
+					y += 15;
+				}
+			} else {
+				ctx.fillStyle = 'white';
+				ctx.fillText("F1 for help.", 10, 15);
+			}
 		}
 		
 		#requestRender() {
@@ -572,6 +594,7 @@
 				case "q": commands.push({type: "move", direction: "up"}); break;
 				case "e": commands.push({type: "move", direction: "down"}); break;
 				case "g": commands.push({type: "pickup"}); break;
+				case "F1": commands.push({type: "togglehelp"}); break;
 			}
 			return commands;
 		}
@@ -701,6 +724,11 @@
 					}
 					return;
 				}
+				case "togglehelp": {
+					this.#showHelp = !this.#showHelp;
+					this.#requestRender();
+					return;
+				}
 			}
 		}
 		
@@ -710,6 +738,8 @@
 			for( const command of commands ) this.#doCommand(command);
 			if( commands.length == 0 ) {
 				console.log(`Unrecognized key: ${event.key}`);
+			} else {
+				event.preventDefault();
 			}
 		}
 		
