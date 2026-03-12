@@ -12,13 +12,16 @@ Goal is to recreate Dungeon pretty much as it was, for historical reasons.
 - [ ] Text-based dungeon description
   - Including bitmaps, I suppose
 - [ ] Stairs or ladders
-- [ ] Background items with explicit Z ordering
+- [ ] Background/foreground objects with explicit Z ordering,
+  some of which may be 'collidable'
 
 Once that is done, I can go nuts and make other things,
 but the point is to stick pretty close to the original.
 
 Features beyond orignal that might be nice:
 
+- [X] Arbitrary-sized rooms
+- [X] Arbitrary-sized portals
 - [ ] Sound effects
 - [ ] Ambient sounds/music?
 - [ ] Pits in floor
