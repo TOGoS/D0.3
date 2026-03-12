@@ -157,7 +157,17 @@
 	 */
 	function renderHarold(ctx) {
 		ctx.fillStyle = "orange";
-		ctx.fillRect(-0.3, -0.3, 0.6, 0.6);
+		ctx.fillRect(-0.15, -0.5, 0.3, 0.3);
+		ctx.strokeStyle = "orange";
+		ctx.beginPath();
+		ctx.moveTo(0, -0.2);
+		ctx.lineTo(0,  0.2);
+		ctx.moveTo(-0.3,0.5);
+		ctx.lineTo( 0  ,0.2);
+		ctx.lineTo( 0.3,0.5);
+		ctx.moveTo(-0.3,0);
+		ctx.lineTo( 0.3,0);
+		ctx.stroke();
 	}
 	
 	/** @type {AABB3D} */
@@ -311,6 +321,7 @@
 			const roomThing = room.contents[k];
 			ctx.save();
 			ctx.translate(roomThing.position.x, roomThing.position.y);
+			ctx.scale(1, -1); // Flip Y for screen coordinates
 			roomThing.thing.icon.render.call(roomThing.thing.icon, ctx);
 			ctx.restore();
 		}
@@ -363,23 +374,44 @@
 	function drawDungeon(ctx, dungeon, perspective) {
 		const room = dungeon.rooms[perspective.roomId];
 		
-		ctx.save();
-		
-		ctx.translate(ctx.canvas.width/2, ctx.canvas.height/2);
-		ctx.scale(perspective.scale, -perspective.scale);
-		ctx.translate(-perspective.position.x, -perspective.position.y);
-		
-		for( const link of room.links ) {
-			const destRoom = dungeon.rooms[link.targetRoomId];
-			ctx.save();	
-			ctx.translate(link.outPosition.x - link.inPosition.x, link.outPosition.y - link.inPosition.y);
-			drawRoom(ctx, destRoom);
+		{
+			ctx.save();
+			
+			ctx.translate(ctx.canvas.width/2, ctx.canvas.height/2);
+			ctx.scale(perspective.scale, -perspective.scale);
+			ctx.translate(-perspective.position.x, -perspective.position.y);
+			
+			for( const link of room.links ) {
+				const destRoom = dungeon.rooms[link.targetRoomId];
+				ctx.save();	
+				ctx.translate(link.outPosition.x - link.inPosition.x, link.outPosition.y - link.inPosition.y);
+				drawRoom(ctx, destRoom);
+				ctx.restore();
+			}
+			
+			ctx.save();
+			drawRoom(ctx, room);
+			ctx.restore();
 			ctx.restore();
 		}
 		
-		drawRoom(ctx, room);
-
-		ctx.restore();
+		const thingId = perspective.thingId;
+		if( thingId ) {
+			const thing = room.contents[thingId]?.thing;
+			if( thing ) {
+				let x = 1 * perspective.scale;
+				let y = ctx.canvas.height - 2 * perspective.scale;
+				for( const inventoryKey in thing.inventory ) {
+					const inventoryThing = thing.inventory[inventoryKey];
+					ctx.save();
+					ctx.translate(x, y);
+					ctx.scale(perspective.scale, perspective.scale);
+					inventoryThing.icon.render.call(inventoryThing.icon, ctx);
+					ctx.restore();
+					x += 1.5 * perspective.scale;
+				}
+			}
+		}
 	}
 	
 	//// The game
@@ -421,8 +453,12 @@
 							inventory: {},
 							icon: {
 								render(ctx) {
+									ctx.fillStyle = "silver";
+									ctx.fillRect(-0.3, -0.05, 0.6, 0.1);
+									ctx.fillRect( 0.1, -0.05, 0.1, 0.2);
+									ctx.fillRect( 0.3, -0.05, 0.1, 0.2);
 									ctx.fillStyle = "red";
-									ctx.fillRect(-0.2, -0.2, 0.4, 0.4);
+									ctx.fillRect(-0.3, -0.15, 0.3, 0.3);
 								}
 							}
 						}
