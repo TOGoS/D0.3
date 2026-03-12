@@ -2,7 +2,28 @@
 
 Yet another browser/JavaScript implementation of [Dungeon](http://www.nuke24.net/dlog/Dungeon.html).
 
-Work in progress as of 2026-03-07.
+Goal is to recreate Dungeon pretty much as it was, for historical reasons.
+
+- [X] 3x3 tile rooms
+- [X] 1 or 2-way portals between rooms
+- [X] Keys
+- [ ] Doors between rooms which may or not be locked, and may or not be see-through
+- [X] Thin walls between rooms (i.e. you don't need a full 'block')
+- [ ] Text-based dungeon description
+  - Including bitmaps, I suppose
+- [ ] Stairs or ladders
+- [ ] Background items with explicit Z ordering
+
+Once that is done, I can go nuts and make other things,
+but the point is to stick pretty close to the original.
+
+Features beyond orignal that might be nice:
+
+- [ ] Sound effects
+- [ ] Ambient sounds/music?
+- [ ] Pits in floor
+- [ ] 2.5D rendering???
+- [ ] Random maze generation?
 
 ## Implementation Philosophy
 
