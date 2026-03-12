@@ -60,6 +60,7 @@
 	 * @typedef Thing
 	 * @property {ThingID} id
 	 * @property {boolean} pickuppable
+	 * @property {{[k:RoomThingKey]: Thing}} inventory
 	 * @property {Icon} icon
 	 * 
 	 * @typedef RoomThing
@@ -85,6 +86,39 @@
 	 * @property {YardsPerPixel} scale
 	 * // Possibly add orientation later
 	 */
+	
+	//// Vector math
+	
+	/**
+	 * @param {Vec3D} a
+	 * @param {Vec3D} b
+	 * @return {boolean}
+	 */
+	function vec3dEquals(a, b) {
+		return a.x == b.x && a.y == b.y && a.z == b.z;
+	}
+	
+	/**
+	 * @param {Vec3D} a
+	 * @param {Vec3D} b
+	 * @return {Vec3D}
+	 */
+	function addVec3d(a, b) {
+		return {
+			x: a.x + b.x,
+			y: a.y + b.y,
+			z: a.z + b.z
+		};
+	}
+	
+	/**
+	 * @param {Vec3D} a
+	 * @param {Vec3D} b
+	 * @returns {number}
+	 */
+	function vec3dManhattanDistance(a, b) {
+		return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) + Math.abs(a.z - b.z);
+	}
 	
 	/**
 	 * @param {Direction} d
@@ -116,15 +150,6 @@
 		case "up"   : return {x: (bounds.minX+bounds.maxX)/2, y: (bounds.minY+bounds.maxY)/2, z: bounds.maxZ};
 		case "west" : return {x: bounds.minX, y: (bounds.minY+bounds.maxY)/2, z: (bounds.minZ+bounds.maxZ)/2};
 		}
-	}
-	
-	/**
-	 * @param {Vec3D} a
-	 * @param {Vec3D} b
-	 * @return {boolean}
-	 */
-	function vec3dEquals(a, b) {
-		return a.x == b.x && a.y == b.y && a.z == b.z;
 	}
 	
 	/**
@@ -290,20 +315,7 @@
 			ctx.restore();
 		}
 	}
-	
-	/**
-	 * @param {Vec3D} a
-	 * @param {Vec3D} b
-	 * @return {Vec3D}
-	 */
-	function addVec3d(a, b) {
-		return {
-			x: a.x + b.x,
-			y: a.y + b.y,
-			z: a.z + b.z
-		};
-	}
-	
+		
 	const VEC3D_UP    = Object.freeze({x: 0, y: 0, z: 1});
 	const VEC3D_DOWN  = Object.freeze({x: 0, y: 0, z:-1});
 	const VEC3D_EAST  = Object.freeze({x: 1, y: 0, z: 0});
@@ -327,19 +339,19 @@
 	}
 	
 	/**
-	 * Generate a uniqe thing key for the given room.
-	 * If the indicated base key is not already used, it will be returned.
+	 * Generate a uniqe key for inserting something into the given collection.
+	 * Will return the indicated baseKey if not already in use.
 	 * 
-	 * @param {Room} room
-	 * @param {RoomThingKey} [baseKey]
+	 * @param {{[k:string]: any}} collection
+	 * @param {string} [baseKey]
 	 */
-	function generateThingKey(room, baseKey) {
-		if( baseKey != undefined && !room.contents[baseKey] ) return baseKey;
+	function generateKey(collection, baseKey) {
+		if( baseKey != undefined && !collection[baseKey] ) return baseKey;
 		
 		if( baseKey == undefined ) baseKey = "thing";
 		
 		let i = 1;
-		while( room.contents[baseKey+"_"+i] ) i++;
+		while( collection[baseKey+"_"+i] ) i++;
 		return baseKey+"_"+i;
 	}
 	
@@ -383,6 +395,7 @@
 						thing: {
 							id: "harold",
 							pickuppable: false,
+							inventory: {},
 							icon: {
 								render: renderHarold
 							}
@@ -399,7 +412,22 @@
 			"room002": {
 				wallColor: "green",
 				bounds: STD_ROOM_BOUNDS,
-				contents: {},
+				contents: {
+					"redKey00": {
+						position: {x:-1, y:-1, z:0},
+						thing: {
+							id: "redKey",
+							pickuppable: true,
+							inventory: {},
+							icon: {
+								render(ctx) {
+									ctx.fillStyle = "red";
+									ctx.fillRect(-0.2, -0.2, 0.4, 0.4);
+								}
+							}
+						}
+					}
+				},
 				links: []
 			}
 		}
@@ -445,7 +473,10 @@
 	 * @property {"move"} type
 	 * @property {Direction} direction
 	 * 
-	 * @typedef {MoveCommand} Command
+	 * @typedef PickUpCommand
+	 * @property {"pickup"} type
+	 * 
+	 * @typedef {MoveCommand|PickUpCommand} Command
 	 * 
 	 */
 	
@@ -498,9 +529,6 @@
 			
 			if( this.#dungeon && perspective ) drawDungeon(ctx, this.#dungeon, perspective);
 			
-			// ctx.fillStyle = 'black';
-			// ctx.fillRect(0, 0, canvWidth, canvHeight);
-			
 			ctx.strokeStyle = this.#hasFocus ? 'rgb(0,200,0)' : 'rgb(200,0,0)';
 			ctx.lineWidth = 1;
 			ctx.strokeRect(0.5, 0.5, canvWidth - 1, canvHeight - 1);
@@ -543,6 +571,7 @@
 				case "d": commands.push({type: "move", direction: "east"}); break;
 				case "q": commands.push({type: "move", direction: "up"}); break;
 				case "e": commands.push({type: "move", direction: "down"}); break;
+				case "g": commands.push({type: "pickup"}); break;
 			}
 			return commands;
 		}
@@ -575,7 +604,7 @@
 			if( !toRoom ) throw new Error(`No such room: ${toRoomId}`);
 			
 			delete room.contents[fromThingKey];
-			const toThingKey = generateThingKey(toRoom, fromThingKey);
+			const toThingKey = generateKey(toRoom, fromThingKey);
 			toRoom.contents[toThingKey] = {
 				position: toPosition,
 				thing: roomThing.thing
@@ -584,6 +613,30 @@
 			this.#dungeonUpdated();
 			
 			return true;
+		}
+		
+		/**
+		 * @param {ThingID} characterId
+		 */
+		#attemptPickUpItem(characterId) {
+			if( !this.#dungeon ) return;
+			const characters = this.#findCharacter();
+			char: for( const character of characters ) {
+				const room = this.#dungeon.rooms[character.roomId];
+				if( !room ) throw new Error(`findThings returned entry with invalid room: ${character.roomId}`);
+				
+				for( const roomThingKey in room.contents ) {
+					const roomThing = room.contents[roomThingKey];
+					if( roomThing.thing.pickuppable && vec3dManhattanDistance(roomThing.position, character.roomThing.position) < 0.5 ) {
+						const inventoryKey = generateKey(character.roomThing.thing.inventory, roomThingKey);
+						character.roomThing.thing.inventory[inventoryKey] = roomThing.thing;
+						delete room.contents[roomThingKey];
+						this.#dungeonUpdated();
+						continue char; // Only pick up one item per character per command
+					}
+				}
+			}
+			return false;
 		}
 		
 		/**
@@ -638,6 +691,15 @@
 					if( !this.#attemptMoveCharacter(this.#characterId, command.direction) ) {
 						console.log("Bonk!");
 					}
+					return;
+				}
+				case "pickup": {
+					if( !this.#characterId ) return;
+					// console.log("Picking up item");
+					if( !this.#attemptPickUpItem(this.#characterId) ) {
+						console.log("Nothing to pick up!");
+					}
+					return;
 				}
 			}
 		}
