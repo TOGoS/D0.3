@@ -449,7 +449,14 @@
 	 * 
 	 */
 	
+	/**
+	 * @typedef {{
+	 *   addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+	 * }} KeyListenerElement
+	 */
+	
 	class DungeonUI {
+		#hasFocus = false;
 		/** @type {undefined|Dungeon} */
 		#dungeon;
 		/** @type {undefined|ThingID} */
@@ -468,9 +475,11 @@
 		render() {
 			this.#renderRequested = false;
 			
-			this.#canvas.width = this.#canvas.clientWidth;
-			this.#canvas.height = this.#canvas.clientHeight;
-		
+			const canvWidth  = this.#canvas.clientWidth;
+			const canvHeight = this.#canvas.clientHeight;
+			this.#canvas.width  = canvWidth;
+			this.#canvas.height = canvHeight;
+			
 			const ctx = cast(ctx => ctx instanceof CanvasRenderingContext2D, this.#canvas.getContext('2d'));
 			
 			const characterSearchResult = this.#dungeon == undefined || this.#characterId == undefined ? [] :
@@ -489,9 +498,18 @@
 			
 			if( this.#dungeon && perspective ) drawDungeon(ctx, this.#dungeon, perspective);
 			
+			// ctx.fillStyle = 'black';
+			// ctx.fillRect(0, 0, canvWidth, canvHeight);
+			
+			ctx.strokeStyle = this.#hasFocus ? 'rgb(0,200,0)' : 'rgb(200,0,0)';
+			ctx.lineWidth = 1;
+			ctx.strokeRect(0.5, 0.5, canvWidth - 1, canvHeight - 1);
+			
 			ctx.fillStyle = 'white';
 			ctx.font = "12px monospace";
-			ctx.fillText(`Position: ${perspective ? `${JSON.stringify(perspective.roomId)}, ${JSON.stringify(perspective.position)}` : 'Not found'}`, 10, ctx.canvas.height - 20);
+			ctx.fillText(`Position: ${perspective ? `${JSON.stringify(perspective.roomId)}, ${JSON.stringify(perspective.position)}` : 'Not found'}`, 10, canvHeight - 20);
+			ctx.fillStyle = ctx.strokeStyle;
+			ctx.fillText(`Hasfocus: ${this.#hasFocus}`, 10, canvHeight - 35);
 		}
 		
 		#requestRender() {
@@ -500,6 +518,14 @@
 			this.#renderRequested = true;
 		}
 		#dungeonUpdated() {
+			this.#requestRender();
+		}
+		
+		get hasFocus() {
+			return this.#hasFocus;
+		}
+		set hasFocus(hasFocus) {
+			this.#hasFocus = hasFocus;
 			this.#requestRender();
 		}
 		
@@ -627,13 +653,16 @@
 		
 		/**
 		 * @param {HTMLCanvasElement} canvas
+		 * @param {KeyListenerElement} keyListenerElement
 		 * @returns {DungeonUI}
 		 */
-		static init(canvas) {
+		static init(canvas, keyListenerElement) {
 			const ui = new DungeonUI(cast(el => el instanceof HTMLCanvasElement, canvas));
 			
-			window.addEventListener('resize', () => ui.#requestRender());
-			window.addEventListener('keydown', ui.#handleKeyDown.bind(ui));
+			canvas.addEventListener('resize', () => ui.#requestRender());
+			keyListenerElement.addEventListener('keydown', ui.#handleKeyDown.bind(ui));
+			keyListenerElement.addEventListener('focus', () => ui.hasFocus = true);
+			keyListenerElement.addEventListener('blur', () => ui.hasFocus = false);
 			
 			ui.#requestRender();
 			
@@ -661,7 +690,13 @@
 		}
 	}
 	
-	const dungeonUi = DungeonUI.init(cast(el => el instanceof HTMLCanvasElement, document.getElementById('the-view')));
+	/** @type {HTMLCanvasElement} */
+	const theView = cast(el => el instanceof HTMLCanvasElement, document.getElementById('the-view'));
+	const dungeonUi = DungeonUI.init(
+		theView,
+		theView
+	);
+	theView.focus();
 	dungeonUi.dungeon = theDungeon;
 	dungeonUi.characterId = "harold";
 })();
