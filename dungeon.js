@@ -161,6 +161,51 @@
 		return rez;
 	}
 	
+	//// Geometry
+	
+	/**
+	 * @param {AABB3D} bounds 
+	 * @param {Vec3D} position 
+	 * @returns {boolean}
+	 */
+	function isWithin(bounds, position) {
+		return position.x >= bounds.minX && position.x <= bounds.maxX &&
+			   position.y >= bounds.minY && position.y <= bounds.maxY &&
+			   position.z >= bounds.minZ && position.z <= bounds.maxZ;
+	}
+	
+	/**
+	 * @param {RoomLink} link 
+	 * @param {Vec3D} fromPosition 
+	 * @param {Vec3D} toPosition 
+	 */
+	function crossesPortal(link, fromPosition, toPosition) {
+		// Check if the line from fromPosition to toPosition crosses the plane of the portal
+		// and if the crossing point is within the portal bounds.
+		const portalNormal = directionVector(link.outDirection);
+		const portalPoint = link.outPosition;
+		
+		const fromToPortal = {
+			x: portalPoint.x - fromPosition.x,
+			y: portalPoint.y - fromPosition.y,
+			z: portalPoint.z - fromPosition.z,
+		};
+		
+		const toToPortal = {
+			x: portalPoint.x - toPosition.x,
+			y: portalPoint.y - toPosition.y,
+			z: portalPoint.z - toPosition.z,
+		};
+		
+		// CoPilot-generated math, we'll seee if it works, lmao.
+		const fromDot = fromToPortal.x * portalNormal.x + fromToPortal.y * portalNormal.y + fromToPortal.z * portalNormal.z;
+		const toDot = toToPortal.x * portalNormal.x + toToPortal.y * portalNormal.y + toToPortal.z * portalNormal.z;
+		
+		return (fromDot > 0 && toDot < 0) || (fromDot < 0 && toDot > 0);
+	}
+	
+	//// Rendering
+	
 	/**
 	 * @param {CanvasRenderingContext2D} ctx
 	 * @param {Room} room
@@ -215,6 +260,41 @@
 	}
 	
 	/**
+	 * @param {Vec3D} a
+	 * @param {Vec3D} b
+	 * @return {Vec3D}
+	 */
+	function addVec3d(a, b) {
+		return {
+			x: a.x + b.x,
+			y: a.y + b.y,
+			z: a.z + b.z
+		};
+	}
+	
+	const VEC3D_UP    = Object.freeze({x: 0, y: 0, z: 1});
+	const VEC3D_DOWN  = Object.freeze({x: 0, y: 0, z:-1});
+	const VEC3D_EAST  = Object.freeze({x: 1, y: 0, z: 0});
+	const VEC3D_WEST  = Object.freeze({x:-1, y: 0, z: 0});
+	const VEC3D_NORTH = Object.freeze({x: 0, y: 1, z: 0});
+	const VEC3D_SOUTH = Object.freeze({x: 0, y:-1, z: 0});
+	
+	/**
+	 * @param {Direction} direction
+	 * @returns {Vec3D}
+	 */
+	function directionVector(direction) {
+		switch(direction) {
+		case "up"   : return VEC3D_UP;
+		case "down" : return VEC3D_DOWN;
+		case "east" : return VEC3D_EAST;
+		case "west" : return VEC3D_WEST;
+		case "north": return VEC3D_NORTH;
+		case "south": return VEC3D_SOUTH;
+		}
+	}
+	
+	/**
 	 * Generate a uniqe thing key for the given room.
 	 * If the indicated base key is not already used, it will be returned.
 	 * 
@@ -256,6 +336,8 @@
 
 		ctx.restore();
 	}
+	
+	//// The game
 	
 	/** @type Dungeon */
 	const theDungeon = {
@@ -453,11 +535,32 @@
 			for( const character of characters ) {
 				const room = this.#dungeon.rooms[character.roomId];
 				if( !room ) throw new Error(`findThings returned entry with invalid room: ${character.roomId}`);
-				const link = room.links.find(link => link.outDirection == direction);
-				if( !link ) continue; // No exit in that direction, try next character match
 				
-				// TODO: Allow positioning within room
-				return this.#moveRoomThing(character.roomId, character.roomThingKey, link.targetRoomId, {x:0,y:0,z:0});
+				const destLocalPosition = addVec3d(character.roomThing.position, directionVector(direction));
+				const crossedPortals = room.links.filter(link => crossesPortal(link, character.roomThing.position, destLocalPosition));
+				for( const link of crossedPortals ) {
+					const destRoom = this.#dungeon.rooms[link.targetRoomId];
+					if( !destRoom ) throw new Error(`No such room: ${link.targetRoomId}`);
+					
+					const destGlobalPosition = addVec3d(destLocalPosition, {
+						x: link.inPosition.x - link.outPosition.x,
+						y: link.inPosition.y - link.outPosition.y,
+						z: link.inPosition.z - link.outPosition.z,
+					});
+					
+					if( !isWithin(destRoom.bounds, destGlobalPosition) ) {
+						console.warn(`Crossed portal ${link.outDirection} to room ${link.targetRoomId}, but destination position ${JSON.stringify(destGlobalPosition)} is outside of room bounds`);
+						continue; // Don't allow moving through the portal if the destination position isn't valid within the new room
+					}
+					
+					return this.#moveRoomThing(character.roomId, character.roomThingKey, link.targetRoomId, destGlobalPosition);
+				}
+				
+				if( isWithin(room.bounds, destLocalPosition) ) {
+					return this.#moveRoomThing(character.roomId, character.roomThingKey, character.roomId, destLocalPosition);
+				}
+				
+				// TODO: Play a bonk sound or something if the move is invalid?
 			}
 		}
 		
